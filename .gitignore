@@ -6,3 +6,7 @@
 *.order
 *.mod
 *.mod.c
+
+**/target/
+**/*.rs.bk
+Cargo.lock

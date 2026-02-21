@@ -1,0 +1,10 @@
+[package]
+name = "io_uring_testing"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+libc = { version = "0.2", features = ["extra_traits"] }
+io-uring = "0.6"
+tokio = "1"
+userfaultfd = "0.9"
