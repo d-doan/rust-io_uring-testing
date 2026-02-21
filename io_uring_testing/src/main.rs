@@ -13,7 +13,7 @@ use std::{ptr, fs::File, io::Read};
 
 // enables Use after free?
 // register buffer & munmap it
-//  wait for another process/own process to allocate same physical memory
+// wait for another process/own process to allocate same physical memory
 // write to original fixed buffer index
 
 // next steps:
@@ -21,27 +21,24 @@ use std::{ptr, fs::File, io::Read};
 // check if registering + dropping vec<u8> works same way?
 
 fn main() {
-    let page_size = unsafe { libc::sysconf(libc::_SC_PAGESIZE) as usize };
-
     unsafe {
         // allocate memory and store secret at addr
-        let addr = mmap(ptr::null_mut(), page_size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+        let mut v = vec![0u8; 4096];
         let secret = b"secret zombie data";
-
-        ptr::copy_nonoverlapping(secret.as_ptr(), addr as *mut u8, secret.len());
+        v[..secret.len()].copy_from_slice(secret);
         println!("wrote secret to memory: {:?}", std::str::from_utf8(secret).unwrap());
+
+        let ptr = v.as_ptr();
+        let len = v.len();
 
         // pin it with fixed buffer
         // pinning increments ref count on physical RAM
-        let iov = iovec { iov_base: addr, iov_len: page_size };
+        let iov = iovec { iov_base: ptr as *mut _, iov_len: len };
         let mut ring = IoUring::new(8).expect("ring failed");
         ring.submitter().register_buffers(&[iov]).expect("register failed");
 
-        // tell OS to delete addr mapping (process can't see it anymore)
-        // kernel keeps physical RAM as reserved bc of ref count is > 0
-        println!("munmap deletes virtual memory mapping");
-        munmap(addr, page_size);
-        println!("process no longer can access addr's memory");
+        // 'free' memory, memory should be gone in rust's eyes
+        drop(v);
 
         let file = File::create("/tmp/zombie_output.txt").unwrap();
         let fd = types::Fd(file.as_raw_fd());
@@ -49,16 +46,11 @@ fn main() {
 
         // writes from the registered buffer to the file descriptor.
         // kernel thread is able to write our 'zombie data' even though process shouldn't have mapping
-        let write_op = opcode::WriteFixed::new(fd, addr as *const u8, secret.len() as u32, 0)
-            .build();
-
+        let write_op = opcode::WriteFixed::new(fd, ptr, secret.len() as u32, 0).build();
         ring.submission().push(&write_op).expect("queue full");
         ring.submit_and_wait(1).unwrap();
 
-        if let Some(cqe) = ring.completion().next() {
-            println!("kernel Result: {}", cqe.result());
-        }
-
+        // check results
         let mut check_file = File::open("/tmp/zombie_output.txt").unwrap();
         let mut contents = String::new();
         check_file.read_to_string(&mut contents).unwrap();
