@@ -1,7 +1,37 @@
 // Helper functions to help monitor and log state of kernel
+// Along with helper functions to setup io_uring state
 
 use std::thread;
 use std::time::Duration;
+use io_uring::IoUring;
+use libc::iovec;
+
+/// set up physical buffer in RAM and pin it
+/// Returns the raw pointer and original Vec
+pub fn prepare_ghost_buffer(
+    ring: &mut IoUring,
+    size: usize,
+    secret: Option<&[u8]>
+) -> (*mut u8, Vec<u8>) {
+    let mut v = vec![0u8; size];
+    let ptr = v.as_mut_ptr();
+
+    let page_size = 4096;
+    // touch every page to trigger lazy loading
+    for i in (0..size).step_by(page_size) {
+        v[i] = 1;
+    }
+
+    if let Some(s) = secret {
+        let len = s.len().min(size);
+        v[..len].copy_from_slice(&s[..len]);
+    }
+    unsafe {
+        let iov = iovec {iov_base: ptr as *mut _, iov_len: size};
+        ring.submitter().register_buffers(&[iov]).expect("register failed");
+    }
+    (ptr, v)
+}
 
 
 // mainly for debugging

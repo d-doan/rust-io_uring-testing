@@ -1,6 +1,7 @@
 mod monitor;
 mod ghost_memory;
 mod covert_channel;
+mod ipc;
 
 use std::env;
 

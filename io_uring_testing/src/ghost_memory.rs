@@ -4,35 +4,20 @@
 
 use crate::monitor;
 use io_uring::IoUring;
-use libc::iovec;
 use std::io;
 
 pub fn demo() {
-    println!("Initialize 500 MB buffer");
     monitor::log_memory_stats("Pre-buffer allocation");
-
+    
+    let mut ring = IoUring::new(8).unwrap();
     // 500 MB
     let size = 1024 * 1024 * 500;
-    let mut v = vec![0u8; size];
-
-    let page_size = 4096;
-    
-    // touch every page to trigger lazy loading
-    for i in (0..size).step_by(page_size) {
-        v[i] = 1;
-    }
+    let (_, v) = monitor::prepare_ghost_buffer(&mut ring, size, None);
+    println!("Allocated 500MB buffer");
 
     monitor::log_memory_stats("Pre-ghost (mapped)");
-
     println!("Pinning buffer in io_uring");
-
-    let ptr = v.as_ptr();
-    let ring = IoUring::new(8).expect("ring failed");
-    unsafe {
-        let iov = iovec {iov_base: ptr as *mut _, iov_len: size};
-        ring.submitter().register_buffers(&[iov]).expect("register failed");
-    }
-
+    
     println!("Dropping/unmapping buffer");
     drop(v);
 
