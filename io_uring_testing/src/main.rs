@@ -1,7 +1,8 @@
 mod monitor;
 mod ghost_memory;
 mod covert_channel;
-mod ipc;
+mod transmitter;
+mod receiver;
 
 use std::env;
 
@@ -32,12 +33,16 @@ fn main() {
     let mode = args.get(1).map(|s| s.as_str()).unwrap_or("--help");
     
     match mode {
-        "g" | "ghost" => ghost_memory::demo(),
-        "c" | "covert" => covert_channel::demo(),
+        "g"     | "ghost" => ghost_memory::demo(),
+        "c"     | "covert" => covert_channel::demo(),
+        "tx"    | "transmit" => transmitter::demo(),
+        "rx"    | "receive" => receiver::demo(),
         _ => {
             println!("Usage: cargo run -- [MODE]");
-            println!("  g, ghost  Shows memory desync between RAM and process");
-            println!("  c, covert Shows bi-directional covert channel");
+            println!("  g,  ghost  Shows memory desync between RAM and process");
+            println!("  c,  covert Shows bi-directional covert channel");
+            println!("  tx, transmit Initiates covert transmission. Start rx mode in another terminal to enable IPC through RAM");
+            println!("  rx, receive Initiates covert reception. Start tx mode in another terminal first to enable IPC through RAM"); 
         }
     }
 }

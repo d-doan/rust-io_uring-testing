@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 libc = { version = "0.2", features = ["extra_traits"] }
-io-uring = "0.6"
+io-uring = "0.7.11"
 tokio = "1"
 userfaultfd = "0.9"
+nix = {version = "0.31.2", features = ["socket", "uio", "fs"] }
