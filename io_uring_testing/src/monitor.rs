@@ -1,8 +1,6 @@
 // Helper functions to help monitor and log state of kernel
 // Along with helper functions to setup io_uring state
 
-use std::thread;
-use std::time::Duration;
 use io_uring::IoUring;
 use libc::iovec;
 
@@ -31,14 +29,6 @@ pub fn prepare_ghost_buffer(
         ring.submitter().register_buffers(&[iov]).expect("register failed");
     }
     (ptr, v)
-}
-
-
-// mainly for debugging
-pub fn sleep_s_with_log(seconds: u64, msg: &str) {
-    println!("{msg}");
-    println!("Sleeping for {seconds} seconds");
-    thread::sleep(Duration::from_secs(seconds));
 }
 
 // logs process and system wide RAM stats 
