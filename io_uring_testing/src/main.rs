@@ -7,7 +7,7 @@ mod ghost_memory;
 mod covert_channel;
 mod transmitter;
 mod receiver;
-mod DoS_Single;
+mod dos_single;
 
 use std::env;
 
@@ -20,7 +20,7 @@ fn main() {
         "c"     | "covert" => covert_channel::demo(),
         "tx"    | "transmit" => transmitter::demo(),
         "rx"    | "receive" => receiver::demo(),
-        "sd"    | "singleDos" => DoS_Single::demo(),
+        "sd"    | "singleDoS" => dos_single::demo(),
         _ => {
             println!("Usage: cargo run -- [MODE]");
             println!("  g,  ghost  Shows memory desync between RAM and process");
